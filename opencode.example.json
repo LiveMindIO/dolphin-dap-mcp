@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "dolphin-dap": {
+      "type": "local",
+      "command": [
+        "node",
+        "/home/jbarber/projects/ai/yolo/livemindio/dolphin-dap-mcp/dist/src/index.js"
+      ],
+      "enabled": true
+    }
+  }
+}
