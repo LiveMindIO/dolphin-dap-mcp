@@ -5,7 +5,7 @@
       "type": "local",
       "command": [
         "node",
-        "/home/jbarber/projects/ai/yolo/livemindio/dolphin-dap-mcp/dist/src/index.js"
+        "/path/to/dolphin-dap-mcp/dist/src/index.js"
       ],
       "enabled": true
     }

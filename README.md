@@ -1,9 +1,16 @@
 # Dolphin DAP MCP
 
-An MCP server for controlling and inspecting Dolphin through its Debug Adapter
-Protocol server. It keeps one persistent DAP connection, correlates responses by
-`request_seq`, queues asynchronous events, and exposes both task-oriented tools
-and a raw request escape hatch.
+An MCP server for controlling and inspecting Dolphin through Dolphin's Debug
+Adapter Protocol (DAP) server.
+
+It provides tools for:
+
+- Starting Dolphin or connecting to an existing Dolphin process
+- Controlling execution and managing breakpoints
+- Inspecting stack frames, variables, registers, sources, and PPC instructions
+- Reading, writing, watching, freezing, and scanning emulated memory
+- Injecting PPC code, creating detours, and resolving pointer chains
+- Sending arbitrary standard or Dolphin-specific DAP requests
 
 ## Requirements
 
@@ -11,26 +18,17 @@ and a raw request escape hatch.
 - A Dolphin build with the DAP server enabled
 - An ELF with debug information for source-level debugging
 
-For `doldecomp/melee`, configure debug builds with:
-
-```sh
-python3 configure.py --debug --sym on --map --no-optimize
-ninja
-```
-
-`--map` is useful for offline address inspection but is not required by DAP.
-`--sym on` and Dolphin source roots are required for useful source mappings.
-
 ## Install
 
 ```sh
 npm install
-npm run check
+npm run build
 ```
 
-## OpenCode
+## Configure an MCP Client
 
-Add the server to `opencode.json`:
+Configure the client to run the compiled server over stdio. For OpenCode, add
+this entry to `opencode.json`:
 
 ```json
 {
@@ -40,7 +38,7 @@ Add the server to `opencode.json`:
       "type": "local",
       "command": [
         "node",
-        "/home/jbarber/projects/ai/yolo/livemindio/dolphin-dap-mcp/dist/src/index.js"
+        "/path/to/dolphin-dap-mcp/dist/src/index.js"
       ],
       "enabled": true
     }
@@ -48,55 +46,153 @@ Add the server to `opencode.json`:
 }
 ```
 
-Run `npm run build` after changing the MCP server.
+Run `npm run build` after changing the server source.
 
-## Dolphin
+## Connect to Dolphin
 
-The `dolphin_start` tool starts Dolphin and connects DAP in one operation. An
-equivalent manual launch is:
+### Start Dolphin Through MCP
 
-```sh
-/path/to/dolphin-emu-nogui \
-  -C Dolphin.General.DAPPort=5678 \
-  -C Dolphin.Debug.SourcePaths=/project/src\;/project/extern/dolphin/src \
-  -C Dolphin.Core.DefaultISO=/path/to/game.iso \
-  -C Dolphin.Core.BootExecutableWithDefaultDisc=true \
-  --exec /project/build/GALE01/main.elf
+Call `dolphin_start` to start Dolphin, open its TCP DAP server, connect, and
+initialize the debug session:
+
+```json
+{
+  "executable": "/path/to/dolphin-emu-nogui",
+  "elf": "/path/to/project/build/main.elf",
+  "disc": "/path/to/game.iso",
+  "port": 5678,
+  "sourcePaths": [
+    "/path/to/project/src",
+    "/path/to/dolphin/src"
+  ],
+  "headless": false,
+  "stopOnEntry": true
+}
 ```
 
-Use `dolphin_connect` instead when Dolphin is already running. Unix-domain DAP
-sockets are supported through `socketPath`.
+`disc` is optional. `port` defaults to `5678`; `sourcePaths` defaults to an
+empty array; `headless` and `stopOnEntry` default to `false`.
+
+### Connect to an Existing Dolphin Process
+
+Start Dolphin with either `Dolphin.General.DAPPort` or
+`Dolphin.General.DAPSocket` configured, then call `dolphin_connect`.
+
+TCP example:
+
+```json
+{
+  "host": "127.0.0.1",
+  "port": 5678,
+  "lifecycle": "attach",
+  "stopOnEntry": true
+}
+```
+
+Unix socket example:
+
+```json
+{
+  "socketPath": "/path/to/dolphin-dap.sock",
+  "lifecycle": "attach",
+  "stopOnEntry": true
+}
+```
+
+`lifecycle` accepts `attach`, `launch`, or `none`. Use `none` when Dolphin's DAP
+lifecycle has already been initialized by another client.
+
+Call `dolphin_disconnect` to close the DAP connection. Set
+`terminateDolphin` to `true` to also stop a Dolphin process launched by
+`dolphin_start`.
 
 ## Tools
 
-- `dolphin_start`: launch Dolphin, connect DAP, and complete its lifecycle
-- `dolphin_connect`: connect to an existing TCP or Unix-socket DAP server
-- `dolphin_disconnect`: disconnect and optionally stop a managed Dolphin
-- `dolphin_status`: inspect the connection, capabilities, and event queue
-- `dolphin_request`: send any standard or Dolphin-specific DAP request
-- `dolphin_events`: drain events or wait for a named event
-- `dolphin_execution`: pause, continue, step, restart, terminate, or list threads
-- `dolphin_breakpoints`: manage source, instruction, and data breakpoints
-- `dolphin_stack`: obtain a DWARF-aware PPC call stack
-- `dolphin_variables`: inspect scopes/variables, set registers, and evaluate
-- `dolphin_memory`: read or write memory using hex, base64, or UTF-8 payloads
-- `dolphin_disassemble`: disassemble PPC instructions around an address
-- `dolphin_sources`: list/read sources and query breakpoint locations
-- `dolphin_watch`: manage realtime watches and frozen memory
-- `dolphin_scan`: run and refine asynchronous memory scans
-- `dolphin_code`: find memory, inject code, detour, and resolve pointer chains
+| Tool | Functionality |
+| --- | --- |
+| `dolphin_start` | Start Dolphin with an ELF and optional disc, connect over TCP, and initialize DAP. |
+| `dolphin_connect` | Connect to an existing TCP or Unix-socket DAP server and optionally initialize its lifecycle. |
+| `dolphin_disconnect` | Disconnect DAP and optionally terminate the Dolphin process started by this server. |
+| `dolphin_status` | Return connection state, DAP capabilities, queued event count, and managed Dolphin PID. |
+| `dolphin_request` | Send any standard or Dolphin-specific DAP request and optionally wait for an event. |
+| `dolphin_events` | Drain queued asynchronous events or wait for a named event. |
+| `dolphin_execution` | Pause, continue, step in, step out, step over, restart, terminate, or list threads. |
+| `dolphin_breakpoints` | Replace source, instruction, or data breakpoints using native DAP argument shapes. |
+| `dolphin_stack` | Return the PPC call stack with DWARF source paths and line information when available. |
+| `dolphin_variables` | Inspect scopes and variables, set a register or variable, or evaluate an expression. |
+| `dolphin_memory` | Read or write emulated memory using hexadecimal, base64, or UTF-8 data. |
+| `dolphin_disassemble` | Disassemble PPC instructions around an emulated address. |
+| `dolphin_sources` | List loaded sources, read source text, or query valid breakpoint locations. |
+| `dolphin_watch` | Create or cancel realtime watches and freeze or unfreeze emulated memory. |
+| `dolphin_scan` | Start, refine, inspect, cancel, dispose, undo, or filter an asynchronous memory scan. |
+| `dolphin_code` | List memory regions, find free memory, inject PPC code, create a detour, or resolve a pointer chain. |
 
-`dolphin_request` intentionally exposes the complete protocol so new Dolphin DAP
-extensions remain usable without an MCP release.
+All tools that communicate with Dolphin accept an optional `timeoutMs`. The
+default is 10,000 ms and the maximum is 300,000 ms.
 
-## Operational Notes
+## Usage Examples
 
-- Dolphin permits at most two DAP clients and debugger state is global. Prefer
-  one MCP connection at a time.
-- Breakpoint setter requests are authoritative within their respective domains.
-- Data breakpoints clear active memory freezes.
-- Variable handles become stale whenever execution resumes or scopes refresh.
-- Wait for `stopped`, `continued`, and memory-scan terminal events rather than
-  treating a successful command response as proof that the state changed.
-- Code injection, detours, register mutation, and memory writes modify live
-  emulation state and should be used deliberately.
+Pause execution:
+
+```json
+{
+  "action": "pause"
+}
+```
+
+Read 32 bytes of emulated memory:
+
+```json
+{
+  "action": "read",
+  "address": "0x80000000",
+  "count": 32
+}
+```
+
+Set an instruction breakpoint:
+
+```json
+{
+  "kind": "instruction",
+  "breakpoints": [
+    {
+      "instructionReference": "0x80001234"
+    }
+  ]
+}
+```
+
+Send a DAP request not covered by a dedicated tool:
+
+```json
+{
+  "command": "modules",
+  "arguments": {}
+}
+```
+
+Wait for a stop event:
+
+```json
+{
+  "waitFor": "stopped",
+  "timeoutMs": 30000
+}
+```
+
+## Runtime Behavior
+
+- The server maintains one persistent DAP connection and correlates responses
+  by DAP request sequence.
+- Asynchronous DAP events remain queued until consumed by a tool waiting for
+  them or by `dolphin_events`.
+- Dolphin supports at most two DAP clients, and debugger state is global.
+- Breakpoint setter requests replace the breakpoints in their respective
+  source, instruction, or data domain.
+- Setting data breakpoints clears active memory freezes.
+- Variable handles become invalid after execution resumes or scopes refresh.
+- Execution and memory-scan operations can complete asynchronously. Use their
+  event-waiting options or `dolphin_events` to confirm the resulting state.
+- Memory writes, register changes, freezes, code injection, and detours modify
+  live emulation state.
