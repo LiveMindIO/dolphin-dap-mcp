@@ -73,10 +73,37 @@ initialize the debug session:
 `disc` is optional. `port` defaults to `5678`; `sourcePaths` defaults to an
 empty array; `headless` and `stopOnEntry` default to `false`.
 
+Core debugging must also be enabled. `dolphin_start` does not currently pass
+`-C Dolphin.Interface.DebugModeEnabled=True` or accept arbitrary CLI arguments.
+For MCP-managed launches, set this in the `Dolphin.ini` used by Dolphin:
+
+```ini
+[Interface]
+DebugModeEnabled = True
+```
+
+Alternatively, launch Dolphin yourself with the explicit CLI override below and
+use `dolphin_connect`.
+
 ### Connect to an Existing Dolphin Process
 
-Start Dolphin with either `Dolphin.General.DAPPort` or
-`Dolphin.General.DAPSocket` configured, then call `dolphin_connect`.
+Start Dolphin with `-C Dolphin.Interface.DebugModeEnabled=True` and either
+`Dolphin.General.DAPPort` or `Dolphin.General.DAPSocket` configured, then call
+`dolphin_connect`. For example:
+
+```sh
+dolphin-emu-nogui \
+  -C Dolphin.Interface.DebugModeEnabled=True \
+  -C Dolphin.General.DAPPort=5678 \
+  --exec /path/to/game.iso \
+  --platform headless
+```
+
+The core-debugging override enables breakpoint checks and debugger-aware stepping
+for this launch without opening GUI panes in NoGUI. A DAP listener alone does not
+enable it. Keep the override when switching to a Unix socket. For source-level
+debugging, also configure a matching debug ELF as described in the
+[server guide](https://github.com/LiveMindIO/dolphin-dap/blob/master/Tools/dap/README.md#running-the-server).
 
 TCP example:
 
